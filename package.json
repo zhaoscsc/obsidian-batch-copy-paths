@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-batch-copy-paths",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"private": true,
 	"description": "Obsidian 插件：在文件列表中多选后右键批量复制笔记名 / 相对路径 / 绝对路径",
 	"scripts": {

@@ -1,4 +1,4 @@
-import { App, Menu, MenuItem, Notice, Plugin, TAbstractFile, TFile } from 'obsidian';
+import { App, Menu, MenuItem, Notice, Plugin, TAbstractFile, TFile, View } from 'obsidian';
 import { FORMATS, type FormatContext, type FormatDef } from './formats';
 import {
 	BatchCopySettingTab,
@@ -33,7 +33,11 @@ interface ExplorerTree {
 	selectedDoms?: Set<ExplorerItem>;
 }
 
-interface ExplorerView {
+/**
+ * 文件列表视图。继承公开的 View，既能直接承接 getLeavesOfType() 的返回值，
+ * 又避开了 TS 的弱类型检查（纯可选字段的接口与 View 无共同属性会报 TS2559）。
+ */
+interface ExplorerView extends View {
 	tree?: ExplorerTree;
 }
 
@@ -67,9 +71,10 @@ function describeError(error: unknown): string {
 
 /** 取文件列表视图，收敛成上面声明的窄类型。 */
 function getExplorerView(app: App): ExplorerView | undefined {
-	const view: unknown = app.workspace.getLeavesOfType('file-explorer')[0]?.view;
+	const view = app.workspace.getLeavesOfType('file-explorer')[0]?.view;
 	if (!view || typeof view !== 'object') return undefined;
-	return view as ExplorerView;
+	// ExplorerView 的字段全是可选的，object 本来就满足它，无需断言。
+	return view;
 }
 
 export default class BatchCopyPlugin extends Plugin {
@@ -216,7 +221,8 @@ export default class BatchCopyPlugin extends Plugin {
 	private addSubmenu(menu: Menu, title: string): Menu | null {
 		const holder: { item?: SubmenuCapableMenuItem } = {};
 		menu.addItem((menuItem) => {
-			holder.item = menuItem as SubmenuCapableMenuItem;
+			// SubmenuCapableMenuItem 的额外字段都是可选的，MenuItem 本来就能赋给它。
+			holder.item = menuItem;
 			menuItem.setSection('info.copy').setTitle(title).setIcon(SUBMENU_ICON);
 		});
 
@@ -258,7 +264,7 @@ export default class BatchCopyPlugin extends Plugin {
 			const probe = new Menu();
 			const holder: { item?: SubmenuCapableMenuItem } = {};
 			probe.addItem((item) => {
-				holder.item = item as SubmenuCapableMenuItem;
+				holder.item = item;
 			});
 			const probeItem: SubmenuCapableMenuItem | undefined = holder.item;
 			this.submenuSupported = typeof probeItem?.setSubmenu === 'function';
