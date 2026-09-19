@@ -30,14 +30,14 @@ Add `zhaoscsc/obsidian-batch-copy-paths` as a beta plugin.
 
 | Format | Example |
 | --- | --- |
-| Vault-relative path | `Notes/todo.md` |
-| Note name | `todo` |
-| File name | `todo.md` |
-| Absolute path | `/Users/you/Vault/Notes/todo.md` |
-| `file://` URL | `file:///Users/you/Vault/Notes/todo.md` |
-| Wiki link | `[[todo]]` |
-| Markdown link | `[todo](Notes/todo.md)` |
-| Obsidian URI | `obsidian://open?vault=Vault&file=Notes%2Ftodo.md` |
+| Vault-relative path | `Notes/meeting-notes.md` |
+| Note name | `meeting-notes` |
+| File name | `meeting-notes.md` |
+| Absolute path | `/Users/you/Vault/Notes/meeting-notes.md` |
+| `file://` URL | `file:///Users/you/Vault/Notes/meeting-notes.md` |
+| Wiki link | `[[meeting-notes]]` |
+| Markdown link | `[meeting-notes](Notes/meeting-notes.md)` |
+| `obsidian://` URI | `obsidian://open?vault=Vault&file=Notes%2Fmeeting-notes.md` |
 
 Right-clicking an item that is *not* part of the selection falls back to Obsidian's single-file menu, so only that one item is copied. That is native behaviour.
 
@@ -71,6 +71,14 @@ This plugin registers **no command palette commands**. Everything lives in the f
 - Absolute paths come from `adapter.getFullPath()`, not from string-concatenating `basePath`.
 - `tree.selectedDoms` and `MenuItem.setSubmenu()` are not part of the public API. Both are feature-detected, and the plugin degrades gracefully (DOM fallback, flat menu) if they change.
 - No network access, no telemetry.
+
+## Privacy
+
+Everything happens locally. The plugin makes no network requests and collects no telemetry, and it does not read your notes. Its only interaction outside Obsidian is writing to the system clipboard, which is the entire point of the plugin: it writes only the strings you explicitly asked it to copy, and it never reads existing clipboard contents.
+
+## Known limitations
+
+- **Settings are not indexed by settings search on Obsidian 1.13.0 and later.** The settings tab uses the classic `display()` API, so it does not implement the declarative `getSettingDefinitions()` API that search relies on. Adopting it requires Obsidian 1.13.0+, which is above this plugin's `minAppVersion` (1.4.10), and would mean maintaining a second representation of the same settings that cannot yet be tested against a real host. Deferred until 1.13.x is a stable baseline; the settings tab itself works normally.
 
 ## Development
 

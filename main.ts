@@ -1,4 +1,4 @@
-import { Menu, Notice, Plugin, TAbstractFile, TFile } from 'obsidian';
+import { App, Menu, MenuItem, Notice, Plugin, TAbstractFile, TFile } from 'obsidian';
 import { FORMATS, type FormatContext, type FormatDef } from './formats';
 import {
 	BatchCopySettingTab,
@@ -8,12 +8,69 @@ import {
 	type BatchCopySettings,
 } from './settings';
 
-/** electron 模块在 Obsidian 桌面端通过 CommonJS require 取得，这里只声明用到的部分。 */
-declare function require(module: string): any;
+/** electron 模块在 Obsidian 桌面端通过 CommonJS require 取得。 */
+declare function require(module: string): unknown;
 
 /** 文件列表右键菜单的 source 标记（Obsidian 内部约定值）。 */
 const EXPLORER_SOURCE = 'file-explorer-context-menu';
 const SUBMENU_ICON = 'lucide-clipboard-copy';
+
+/* ---------------------------------------------------------------------------
+ * 未公开 API 的类型声明。
+ *
+ * Obsidian 的 obsidian.d.ts 没有描述下列内部结构，这里只声明真正用到的部分，
+ * 并用窄类型代替 any —— 否则 any 会顺着调用链扩散，导致下游每次访问都变成
+ * “unsafe member access”。未公开的东西集中收敛在这一个区域里。
+ * ------------------------------------------------------------------------- */
+
+/** 文件列表条目（内部 FileExplorerItem 的最小可用子集） */
+interface ExplorerItem {
+	file?: TAbstractFile;
+}
+
+/** 文件列表的树（内部 FileExplorerTree 的最小可用子集） */
+interface ExplorerTree {
+	selectedDoms?: Set<ExplorerItem>;
+}
+
+interface ExplorerView {
+	tree?: ExplorerTree;
+}
+
+/** 菜单项的内部能力：setSubmenu（自定义子菜单）、dom（失败时清掉死条目） */
+interface SubmenuCapableMenuItem extends MenuItem {
+	setSubmenu?: () => Menu;
+	dom?: HTMLElement;
+}
+
+interface ElectronClipboard {
+	writeText(data: string): void;
+}
+
+interface ElectronModule {
+	clipboard?: ElectronClipboard;
+}
+
+/** 取 Electron 剪贴板；非桌面环境或 require 不可用时返回 undefined。 */
+function getElectronClipboard(): ElectronClipboard | undefined {
+	try {
+		return (require('electron') as ElectronModule | null)?.clipboard;
+	} catch {
+		return undefined;
+	}
+}
+
+/** 把 unknown 的 catch 值转成可读文本，避免未知值直接流进日志。 */
+function describeError(error: unknown): string {
+	return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+}
+
+/** 取文件列表视图，收敛成上面声明的窄类型。 */
+function getExplorerView(app: App): ExplorerView | undefined {
+	const view: unknown = app.workspace.getLeavesOfType('file-explorer')[0]?.view;
+	if (!view || typeof view !== 'object') return undefined;
+	return view as ExplorerView;
+}
 
 export default class BatchCopyPlugin extends Plugin {
 	settings: BatchCopySettings = { ...DEFAULT_SETTINGS };
@@ -58,7 +115,8 @@ export default class BatchCopyPlugin extends Plugin {
 	}
 
 	private async loadSettings(): Promise<void> {
-		this.settings = normalizeSettings(await this.loadData());
+		// loadData() 的类型是 any；显式收成 unknown 再交给 normalizeSettings。
+		this.settings = normalizeSettings((await this.loadData()) as unknown);
 	}
 
 	/**
@@ -77,16 +135,19 @@ export default class BatchCopyPlugin extends Plugin {
 	 */
 	private getExplorerSelection(): TAbstractFile[] {
 		try {
-			const view = this.app.workspace.getLeavesOfType('file-explorer')[0]?.view as any;
-			const doms: Set<any> | undefined = view?.tree?.selectedDoms;
+			const view = getExplorerView(this.app);
+			const doms = view?.tree?.selectedDoms;
 			if (doms && doms.size > 0) {
 				const files = Array.from(doms)
-					.map((dom) => dom?.file)
+					.map((dom) => dom.file)
 					.filter((file): file is TAbstractFile => !!file);
 				if (files.length > 0) return files;
 			}
-		} catch (error) {
-			console.warn('[batch-copy-paths] 读取 tree.selectedDoms 失败，回退 DOM 查询', error);
+		} catch (error: unknown) {
+			console.warn(
+				'[batch-copy-paths] 读取 tree.selectedDoms 失败，回退 DOM 查询',
+				describeError(error),
+			);
 		}
 
 		// DOM 兜底：只扫已渲染的行，成本与视口大小相关，与库大小无关。
@@ -134,31 +195,47 @@ export default class BatchCopyPlugin extends Plugin {
 		menu.addSeparator();
 
 		if (this.settings.menuMode === 'submenu' && this.detectSubmenuSupport()) {
-			let parent: any = null;
-			menu.addItem((item) => {
-				parent = item;
-				item
-					.setSection('info.copy')
-					.setTitle(this.itemTitle('批量复制', files.length))
-					.setIcon(SUBMENU_ICON);
-			});
-			try {
-				const submenu: Menu = parent.setSubmenu();
+			const submenu = this.addSubmenu(menu, this.itemTitle('批量复制', files.length));
+			if (submenu) {
 				for (const format of formats) this.addCopyItem(submenu, format, files);
 				return;
-			} catch (error) {
-				// setSubmenu 是未公开 API，失败就退回平铺，不能留下点不动的死菜单项。
-				console.warn('[batch-copy-paths] 创建子菜单失败，退回平铺菜单', error);
-				this.submenuSupported = false;
-				try {
-					parent?.dom?.remove?.();
-				} catch {
-					// 清理失败不影响平铺菜单可用
-				}
 			}
+			// 子菜单建不起来：退回平铺，不能留下点不动的死条目。
+			this.submenuSupported = false;
 		}
 
 		for (const format of formats) this.addCopyItem(menu, format, files);
+	}
+
+	/**
+	 * 挂一个「批量复制」父条目并返回其子菜单。
+	 *
+	 * setSubmenu 是未公开 API，失败时把父条目的 DOM 摘掉再返回 null，
+	 * 由调用方退回平铺菜单。
+	 */
+	private addSubmenu(menu: Menu, title: string): Menu | null {
+		const holder: { item?: SubmenuCapableMenuItem } = {};
+		menu.addItem((menuItem) => {
+			holder.item = menuItem as SubmenuCapableMenuItem;
+			menuItem.setSection('info.copy').setTitle(title).setIcon(SUBMENU_ICON);
+		});
+
+		// addItem 的回调是同步执行的；这里读一次局部变量，绕开 TS 对闭包赋值的窄化。
+		const parent: SubmenuCapableMenuItem | undefined = holder.item;
+		const setSubmenu = parent?.setSubmenu;
+		if (!parent || typeof setSubmenu !== 'function') return null;
+
+		try {
+			return setSubmenu.call(parent);
+		} catch (error: unknown) {
+			console.warn('[batch-copy-paths] 创建子菜单失败，退回平铺菜单', describeError(error));
+			try {
+				parent.dom?.remove?.();
+			} catch {
+				// 清理失败不影响平铺菜单可用
+			}
+			return null;
+		}
 	}
 
 	private addCopyItem(container: Menu, format: FormatDef, files: TAbstractFile[]): void {
@@ -179,13 +256,14 @@ export default class BatchCopyPlugin extends Plugin {
 		if (this.submenuSupported !== null) return this.submenuSupported;
 		try {
 			const probe = new Menu();
-			let probeItem: any = null;
+			const holder: { item?: SubmenuCapableMenuItem } = {};
 			probe.addItem((item) => {
-				probeItem = item;
+				holder.item = item as SubmenuCapableMenuItem;
 			});
+			const probeItem: SubmenuCapableMenuItem | undefined = holder.item;
 			this.submenuSupported = typeof probeItem?.setSubmenu === 'function';
-		} catch (error) {
-			console.warn('[batch-copy-paths] 子菜单能力探测失败', error);
+		} catch (error: unknown) {
+			console.warn('[batch-copy-paths] 子菜单能力探测失败', describeError(error));
 			this.submenuSupported = false;
 		}
 		return this.submenuSupported;
@@ -218,12 +296,12 @@ export default class BatchCopyPlugin extends Plugin {
 	}
 
 	private async writeClipboard(text: string): Promise<void> {
-		try {
+		const clipboard = getElectronClipboard();
+		if (clipboard) {
 			// Electron 剪贴板：不受窗口焦点影响，比 navigator.clipboard 稳。
-			require('electron').clipboard.writeText(text);
+			clipboard.writeText(text);
 			return;
-		} catch {
-			await navigator.clipboard.writeText(text);
 		}
+		await navigator.clipboard.writeText(text);
 	}
 }
