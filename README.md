@@ -70,15 +70,12 @@ This plugin registers **no command palette commands**. Everything lives in the f
 - The selection is read from the file explorer's internal `tree.selectedDoms` set, falling back to a DOM query. Cost stays proportional to the selection rather than to the vault size, and rows scrolled out of view are still included.
 - Absolute paths come from `adapter.getFullPath()`, not from string-concatenating `basePath`.
 - `tree.selectedDoms` and `MenuItem.setSubmenu()` are not part of the public API. Both are feature-detected, and the plugin degrades gracefully (DOM fallback, flat menu) if they change.
+- Settings are described **once** and rendered by two paths: `getSettingDefinitions()` on Obsidian 1.13.0+, where Obsidian handles rendering, settings search and persistence; and the classic `display()` tab on older versions, which Obsidian 1.13+ skips. Both derive from the same descriptor list, so they cannot drift apart.
 - No network access, no telemetry.
 
 ## Privacy
 
 Everything happens locally. The plugin makes no network requests and collects no telemetry, and it does not read your notes. Its only interaction outside Obsidian is writing to the system clipboard, which is the entire point of the plugin: it writes only the strings you explicitly asked it to copy, and it never reads existing clipboard contents.
-
-## Known limitations
-
-- **Settings are not indexed by settings search on Obsidian 1.13.0 and later.** The settings tab uses the classic `display()` API, so it does not implement the declarative `getSettingDefinitions()` API that search relies on. Adopting it requires Obsidian 1.13.0+, which is above this plugin's `minAppVersion` (1.4.10), and would mean maintaining a second representation of the same settings that cannot yet be tested against a real host. Deferred until 1.13.x is a stable baseline; the settings tab itself works normally.
 
 ## Development
 
@@ -118,4 +115,5 @@ MIT. See [LICENSE](LICENSE).
 - **文件夹不出这些选项**：选中集里没有文件时整个菜单不挂条目；混选时文件夹按设置被过滤
 - **不注册任何命令面板命令**，功能只在右键菜单里
 - **它的用途**：以前要让 AI 处理一批笔记得挨个复制文件名/路径，现在多选一次拿到整批清单，粘给 AI 就能让它调子 agent 批量并行处理——本质是「人 → AI 的批量接口」
+- 设置面板同时支持两条路径：Obsidian 1.13.0+ 走声明式 API（设置可被设置搜索检索），旧版本走经典 `display()`；两者由同一份描述生成
 - 仅桌面端，需要 Obsidian 1.4.10+；无联网、无遥测
