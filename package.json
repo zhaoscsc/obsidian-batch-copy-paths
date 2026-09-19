@@ -1,0 +1,17 @@
+{
+	"name": "obsidian-batch-copy-paths",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Obsidian 插件：在文件列表中多选后右键批量复制笔记名 / 相对路径 / 绝对路径",
+	"scripts": {
+		"build": "node esbuild.config.mjs",
+		"deploy": "node esbuild.config.mjs --deploy",
+		"watch": "node esbuild.config.mjs --watch",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"esbuild": "^0.25.0",
+		"obsidian": "^1.12.3",
+		"typescript": "^5.6.0"
+	}
+}
