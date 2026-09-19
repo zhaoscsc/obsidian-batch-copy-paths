@@ -1,4 +1,4 @@
-import { App, TAbstractFile, TFile } from 'obsidian';
+import { App, FileSystemAdapter, TAbstractFile, TFile } from 'obsidian';
 
 export type FormatId =
 	| 'basename'
@@ -36,14 +36,16 @@ function linkTarget(file: TAbstractFile): string {
 	return file.name;
 }
 
+/**
+ * 磁盘绝对路径。
+ *
+ * 桌面端的 adapter 是 FileSystemAdapter，能用官方的 getFullPath()；
+ * 移动端不是，取不到磁盘路径时退回 vault 相对路径（而不是给出手拼的错误结果）。
+ */
 function absolutePath(app: App, path: string): string {
-	const adapter = app.vault.adapter as any;
-	if (typeof adapter?.getFullPath === 'function') {
-		return adapter.getFullPath(path) as string;
-	}
-	// 理论上走不到（getFullPath 自 1.7.2 起提供），留个手拼兜底。
-	const basePath: string | undefined = adapter?.basePath;
-	return basePath ? `${basePath.replace(/\/+$/, '')}/${path}` : path;
+	const adapter = app.vault.adapter;
+	if (adapter instanceof FileSystemAdapter) return adapter.getFullPath(path);
+	return path;
 }
 
 /** 逐段编码，保留 / 分隔符，避免中文与空格在 file:// URL 里出问题。 */

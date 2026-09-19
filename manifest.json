@@ -1,9 +1,9 @@
 {
 	"id": "batch-copy-paths",
 	"name": "Batch Copy Names and Paths",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"minAppVersion": "1.4.10",
-	"description": "Copy the names, vault-relative paths, absolute paths, wiki links, Markdown links, and Obsidian URIs of multiple selected notes to the clipboard at once.",
+	"description": "Copy the names, vault-relative paths, absolute paths, file URLs, wiki links, and Markdown links of multiple selected notes to the clipboard at once.",
 	"author": "赵越",
 	"authorUrl": "https://github.com/zhaoscsc",
 	"isDesktopOnly": true
