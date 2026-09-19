@@ -4,6 +4,24 @@ Copy the names, vault-relative paths, absolute paths, wiki links, Markdown links
 
 Obsidian's file explorer has no copy action for a multi-selection: right-click a selection and the context menu offers only *New folder* and *Delete*. The native *Copy current file path* commands act on the active note only. This plugin fills that gap.
 
+## Installation
+
+**From Obsidian (once listed in the community directory)**
+
+Open this link, or search for *Batch Copy Names and Paths* under **Settings → Community plugins → Browse**:
+
+```
+obsidian://show-plugin?id=batch-copy-paths
+```
+
+**Manually**
+
+Download `main.js` and `manifest.json` from the [latest release](https://github.com/zhaoscsc/obsidian-batch-copy-paths/releases/latest) into `<vault>/.obsidian/plugins/batch-copy-paths/`, then enable the plugin under **Settings → Community plugins**.
+
+**With BRAT**
+
+Add `zhaoscsc/obsidian-batch-copy-paths` as a beta plugin.
+
 ## Usage
 
 1. In the file explorer, **Option-click** (macOS) or **Alt-click** (Windows/Linux) to select individual notes, or **Shift-click** to select a range.
