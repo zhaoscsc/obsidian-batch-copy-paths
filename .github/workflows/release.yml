@@ -1,0 +1,106 @@
+name: Release
+
+# 手动触发，只产 **草稿** Release。
+# 推 tag 不会自动公开任何东西 —— 公开由人确认匿名资产可下载之后再手动执行。
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release. Must equal manifest.json "version" (e.g. 1.0.1). Tag is created without a "v" prefix.'
+        required: true
+        type: string
+
+# 冻结第 1.0.1 版发布流程时，本工作流只在默认分支上可被 dispatch。
+permissions:
+  contents: write # 创建草稿 Release
+  id-token: write # 签名来源证明所需的 OIDC token
+  attestations: write # 写入构建来源证明
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the dispatched ref
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify version consistency
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          manifest=$(node -p "require('./manifest.json').version")
+          pkg=$(node -p "require('./package.json').version")
+          lock=$(node -p "require('./package-lock.json').version")
+          lockRoot=$(node -p "require('./package-lock.json').packages[''].version")
+          echo "manifest=$manifest package=$pkg lock=$lock lockRoot=$lockRoot requested=$REQUESTED"
+          test "$manifest" = "$REQUESTED"   || { echo "::error::manifest.json ($manifest) != requested ($REQUESTED)"; exit 1; }
+          test "$pkg" = "$manifest"         || { echo "::error::package.json ($pkg) != manifest ($manifest)"; exit 1; }
+          test "$lock" = "$manifest"        || { echo "::error::package-lock.json ($lock) != manifest ($manifest)"; exit 1; }
+          test "$lockRoot" = "$manifest"    || { echo "::error::package-lock root ($lockRoot) != manifest ($manifest)"; exit 1; }
+          node -e "
+            const v = require('./versions.json');
+            if (v['$manifest'] !== require('./manifest.json').minAppVersion) {
+              console.error('::error::versions.json does not map $manifest to minAppVersion');
+              process.exit(1);
+            }
+          "
+
+      - name: Refuse to release a pre-built artifact
+        run: |
+          if [ -e main.js ]; then
+            echo "::error::main.js is committed to the repository. It must be a build artifact only."
+            exit 1
+          fi
+
+      - name: Build
+        run: npm run build
+
+      - name: Report artifact digests
+        run: |
+          set -euo pipefail
+          sha256sum main.js manifest.json | tee digests.txt
+          {
+            echo "### Build digests"
+            echo '```'
+            cat digests.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "::error::release $VERSION already exists. Bump the version instead of replacing published assets."
+            exit 1
+          fi
+          gh release create "$VERSION" \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
+            --generate-notes \
+            main.js manifest.json
+          echo "Draft release $VERSION created from $GITHUB_SHA."
+          echo "Publish with: gh release edit $VERSION --draft=false"
